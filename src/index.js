@@ -7,7 +7,8 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Guardar el momento exacto en el que levanta el bot para ignorar mensajes antiguos amontonados en bandeja
-const startupTimestamp = Math.floor(Date.now() / 1000);
+let botReady = false;
+client.on("ready", () => { botReady = true; console.log("¡Bandera verde! Ahora proceso mensajes."); });
 
 // Inicializamos cliente de WhatsApp
 // Dependiendo del SO, a veces requiere configurar el executablePath de Chrome,
@@ -52,7 +53,8 @@ client.on('ready', () => {
 // Escuchamos mensajes entrantes
 client.on('message', async msg => {
     // IGNORAR mensajes que llegaron antes de que el bot se encendiera
-    if (msg.timestamp < startupTimestamp) {
+    if (!botReady) {
+        console.log("[DEBUG] Ignorando mensaje antiguo del arranque...");
         return; 
     }
 
