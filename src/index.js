@@ -104,11 +104,9 @@ client.on('message', async msg => {
                 const textToSpeak = responseText.replace(/\[AUDIO\]|\[Audio\]/i, '').trim();
                 console.log("[DEBUG] Generando audio de voz para:", textToSpeak);
                 try {
-                    const audioPath = await generateVoiceNote(textToSpeak);
-                    const media = MessageMedia.fromFilePath(audioPath);
+                    const base64Audio = await generateVoiceNote(textToSpeak);
+                    const media = new MessageMedia('audio/ogg', base64Audio);
                     await msg.reply(media, undefined, { sendAudioAsVoice: true });
-                    // Limpieza del archivo temporal
-                    fs.unlinkSync(audioPath);
                     return; // Terminamos aquí para no enviar también el texto
                 } catch (err) {
                     console.error("[DEBUG] Error generando audio, cayendo a texto plano. Error:", err);
