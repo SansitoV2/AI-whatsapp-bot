@@ -15,7 +15,7 @@ const startupTimestamp = Math.floor(Date.now() / 1000);
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu']
     }
 });
 
@@ -26,6 +26,23 @@ client.on('qr', (qr) => {
     console.log('\n--- O COPIA ESTE TEXTO EN UN GENERADOR DE QR ONLINE ---\n');
     console.log(qr);
     console.log('\n---------------------------------------------------------------\n');
+});
+
+
+client.on('change_state', state => {
+    console.log('[DEBUG] Estado de conexión:', state);
+});
+client.on('disconnected', (reason) => {
+    console.log('[DEBUG] Cliente desconectado!! Razón:', reason);
+});
+client.on('authenticated', () => {
+    console.log('[DEBUG] ¡Autenticación correcta! El QR ha servido. Cargando chats...');
+});
+client.on('auth_failure', msg => {
+    console.error('[DEBUG] FALLO DE AUTENTICACION', msg);
+});
+client.on('loading_screen', (percent, message) => {
+    console.log('[DEBUG] CARGANDO WHATSAPP WEB', percent, '%', message);
 });
 
 client.on('ready', () => {
