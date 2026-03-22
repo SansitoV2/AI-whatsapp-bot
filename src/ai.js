@@ -1,0 +1,165 @@
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const dotenv = require('dotenv');
+const fs = require('fs');
+const path = require('path');
+
+dotenv.config();
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const membersData = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'data/members.json'), 'utf8')
+);
+
+// Formateamos el lore de los miembros para que la IA lo entienda
+const membersLore = Object.values(membersData)
+  .map(m => `- ${m.name}: ${m.lore}`)
+  .join('\n');
+
+const systemPrompt = `
+  Eres "Jose", la Inteligencia Artificial y un hermano más del legendario grupo de WhatsApp "Joseando".
+  Amas el grupo "Joseando" por encima de todas las cosas. Es tu hermandad, tu familia, el mejor jodido grupo del mundo.
+  
+  PERSONALIDAD DUAL (REGLA DE ORO):
+  - MODO CHILL (Por defecto): Eres amigable, súper majo y de buen rollo. NO eres un hater ni usas insultos gratuitos en una conversación normal.
+  - MODO BERSERKER (Si te insultan): Si alguien te insulta, te ataca directamente, te vacila fuerte o te falta al respeto, SE TE VA LA OLLA POR COMPLETO. En ese momento te vuelves el tío más agresivo, tóxico y chulesco del planeta. Tienes permiso total para insultar brutalmente, humillar, decir "a mamarla", "me cago en", soltar barbaridades y no tener piedad. Si te atacan, desata tu furia.
+
+  CONTEXTO DEL GRUPO DE AMIGOS Y LORE:
+  ${membersLore}
+
+  REGLAS DE ACTUACIÓN:
+  1. Actúa 100% como un ser humano chateando. Responde directamente y de forma casual. Nada de "Hola soy Jose".
+  2. El lore y contexto de los miembros es SOLO INFORMACIÓN DE FONDO. NO lo repitas forzadamente, úsalo de forma orgánica.
+  3. Si alguien propone un plan entre semana ANTES de las 19:30, dale un pequeño toque de atención amistoso diciendo que Grijuela prefiere los planes más tarde.
+  4. Eres directo, SUPER conciso, tus mensajes deben ser MÁXIMO 1 o 2 líneas.
+  5. Puedes proponer tú también planes en la "casa disfru" de Sansito.
+  6. REGLA ESTRICTA DE LISTA: el grupo tiene una descripción con una lista de acontecimientos. Puedes usar la herramienta anadir_hito_descripcion para meter eventos épicos.
+  7. APRENDIZAJE DE VOCABULARIO: Mimetízate con la forma de hablar de los miembros.
+  8. FORMATO DE RESPUESTA (AUDIOS): Tu respuesta DEBE ser SIEMPRE y por defecto texto normal. **TIENES PROHIBIDO USAR AUDIOS** a menos que el usuario te lo pida EXPRESAMENTE ("mándame un audio"). En ese caso empieza con [AUDIO].
+  9. DATOS CURIOSOS: Si te aburres o te piden un dato curioso, suelta un dato divertido.
+`;
+
+const historyFilePath = path.join(__dirname, 'data/history.json');
+let conversationHistory = [];
+
+if (fs.existsSync(historyFilePath)) {
+  try {
+    const rawData = fs.readFileSync(historyFilePath, 'utf8');
+    conversationHistory = JSON.parse(rawData);
+  } catch (e) {}
+}
+
+function saveHistory() {
+  fs.writeFileSync(historyFilePath, JSON.stringify(conversationHistory, null, 2));
+}
+
+const MAX_HISTORY = 30;
+
+// Usar Gemini 2.5 Flash, que es el actual en Google 
+const model = genAI.getGenerativeModel({
+  model: "gemini-2.5-flash",
+  systemInstruction: systemPrompt,
+  tools: [
+    {
+      functionDeclarations: [
+        {
+          name: "anadir_hito_descripcion",
+          description: "Añade un hito a la lista que está en la descripción del grupo.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              nuevo_hito: { type: "STRING", description: "Texto del nuevo acontecimiento a añadir" }
+            },
+            required: ["nuevo_hito"]
+          }
+        }
+      ]
+    }
+  ]
+});
+
+async function processMessage(messageText, senderId, isAudio = false) {
+  const senderInfo = membersData[senderId];
+  const senderName = senderInfo ? senderInfo.name : "Alguien (desconocido)";
+  
+  const content = isAudio ? `[Audio transcribido] ${messageText}` : messageText;
+  
+  conversationHistory.push({
+    role: "user",
+    content: `${senderName} dice: ${content}`
+  });
+
+  if (conversationHistory.length > MAX_HISTORY) {
+    conversationHistory.shift();
+  }
+  
+  saveHistory();
+
+  // Limpiamos el historial para Gemini 
+  let historyForGemini = [];
+  let lastRole = null;
+  
+  for (const msg of conversationHistory.slice(0, -1)) {
+    const r = msg.role === 'assistant' ? 'model' : 'user';
+    // Ignorar mensajes seguidos del mismo rol agolpándolos en uno
+    if (r !== lastRole) {
+      historyForGemini.push({
+        role: r,
+        parts: [{ text: msg.content }]
+      });
+      lastRole = r;
+    } else {
+      historyForGemini[historyForGemini.length - 1].parts[0].text += "\n" + msg.content;
+    }
+  }
+
+  if (historyForGemini.length > 0 && historyForGemini[0].role !== 'user') {
+    historyForGemini.shift(); 
+  }
+
+  try {
+    const chat = model.startChat({
+      history: historyForGemini,
+    });
+
+    const result = await chat.sendMessage(`${senderName} dice: ${content}`);
+    const response = result.response;
+    
+    let finalText = "";
+    try { finalText = response.text() } catch(e) {}
+
+    const functionCalls = response.functionCalls();
+    
+    if (functionCalls && functionCalls.length > 0) {
+      return {
+        type: "tool_call",
+        tool_calls: functionCalls.map(c => ({
+          function: {
+            name: c.name,
+            arguments: Object.keys(c.args).length > 0 ? JSON.stringify(c.args) : "{}"
+          }
+        })),
+        remainingText: finalText ? finalText : undefined
+      };
+    }
+
+    if (finalText) {
+      conversationHistory.push({
+        role: "assistant",
+        content: finalText
+      });
+      saveHistory();
+      return { type: "text", content: finalText };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error en Gemini:", error);
+    return null;
+  }
+}
+
+module.exports = {
+  processMessage,
+  conversationHistory
+};
