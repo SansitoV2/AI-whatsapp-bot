@@ -24,6 +24,9 @@ const client = new Client({
 client.on('qr', (qr) => {
     // Genera el QR en terminal para escanearlo con el WhatsApp de la IA
     qrcode.generate(qr, { small: true });
+    console.log('--- O COPIA ESTE TEXTO EN UN GENERADOR DE QR ONLINE ---');
+    console.log(qr);
+    console.log('-------------------------------------------------------');
     console.log('
 --- O COPIA ESTE TEXTO EN UN GENERADOR DE QR ONLINE ---
 ');
