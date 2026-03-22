@@ -93,7 +93,12 @@ client.on('message', async msg => {
         if (aiResponseText) {
              // Limpiar posibles etiquetas no soportadas por WhatsApp, aunque Gemini 
              // normalmente responde en Markdown plano compatible.
-            await msg.reply(aiResponseText);
+            // Asegurar que nunca enviamos un objeto vacío de respuesta que tire error
+            if (typeof aiResponseText === 'string' && aiResponseText.trim().length > 0) {
+                await msg.reply(aiResponseText.trim());
+            } else {
+                console.log("[DEBUG] Interceptado intento de enviar mensaje vacío o undefined a WhatsApp");
+            }
         }
 
     } catch (error) {
