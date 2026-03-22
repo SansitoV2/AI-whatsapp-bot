@@ -87,18 +87,15 @@ client.on('message', async msg => {
         // 4. Enviar a Gemini para tener la respuesta de SansitoV2
         await chat.sendStateTyping(); // Simular escribiendo en WhatsApp
         const promptToAi = `[Usuario: ${senderName}]: ${textContent}`;
-        const aiResponseText = await processMessage(promptToAi);
+        const aiResponse = await processMessage(promptToAi);
 
         // 5. Enviar mensaje de vuelta
-        if (aiResponseText) {
-             // Limpiar posibles etiquetas no soportadas por WhatsApp, aunque Gemini 
-             // normalmente responde en Markdown plano compatible.
-            // Asegurar que nunca enviamos un objeto vacío de respuesta que tire error
-            if (typeof aiResponseText === 'string' && aiResponseText.trim().length > 0) {
-                await msg.reply(aiResponseText.trim());
-            } else {
-                console.log("[DEBUG] Interceptado intento de enviar mensaje vacío o undefined a WhatsApp");
-            }
+        if (aiResponse && aiResponse.type === "text" && aiResponse.content && aiResponse.content.trim().length > 0) {
+            await msg.reply(aiResponse.content.trim());
+        } else if (aiResponse && aiResponse.type === "tool_call") {
+            await msg.reply("He guardado el acontecimiento en mi base de datos interna. !Oído, mi rey!");
+        } else {
+            console.log("[DEBUG] Interceptado intento de enviar mensaje vacío o undefined a WhatsApp. Respuesta fue:", aiResponse);
         }
 
     } catch (error) {
