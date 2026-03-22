@@ -7,8 +7,6 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Guardar el momento exacto en el que levanta el bot para ignorar mensajes antiguos amontonados en bandeja
-let botReady = false;
-client.on("ready", () => { botReady = true; console.log("¡Bandera verde! Ahora proceso mensajes."); });
 
 // Inicializamos cliente de WhatsApp
 // Dependiendo del SO, a veces requiere configurar el executablePath de Chrome,
@@ -18,6 +16,12 @@ const client = new Client({
     puppeteer: {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu']
     }
+});
+
+let botReady = false;
+client.on('ready', () => { 
+    botReady = true;
+    console.log('¡Bandera verde! Ahora proceso mensajes.'); 
 });
 
 client.on('qr', (qr) => {
@@ -93,9 +97,28 @@ client.on('message', async msg => {
 
         // 5. Enviar mensaje de vuelta
         if (aiResponse && aiResponse.type === "text" && aiResponse.content && aiResponse.content.trim().length > 0) {
-            await msg.reply(aiResponse.content.trim());
+            let responseText = aiResponse.content.trim();
+            
+            // Si la IA decide mandar un audio (empieza por [AUDIO])
+            if (responseText.startsWith('[AUDIO]') || responseText.startsWith('[Audio]')) {
+                const textToSpeak = responseText.replace(/\[AUDIO\]|\[Audio\]/i, '').trim();
+                console.log("[DEBUG] Generando audio de voz para:", textToSpeak);
+                try {
+                    const audioPath = await generateVoiceNote(textToSpeak);
+                    const media = MessageMedia.fromFilePath(audioPath);
+                    await msg.reply(media, undefined, { sendAudioAsVoice: true });
+                    // Limpieza del archivo temporal
+                    fs.unlinkSync(audioPath);
+                    return; // Terminamos aquí para no enviar también el texto
+                } catch (err) {
+                    console.error("[DEBUG] Error generando audio, cayendo a texto plano. Error:", err);
+                    await msg.reply("*(A Sansito se le atascó la voz en la garganta)* " + textToSpeak);
+                }
+            } else {
+                await msg.reply(responseText);
+            }
         } else if (aiResponse && aiResponse.type === "tool_call") {
-            await msg.reply("He guardado el acontecimiento en mi base de datos interna. !Oído, mi rey!");
+            await msg.reply("He guardado el acontecimiento en mi base de datos interna. ¡Oído, mi rey!");
         } else {
             console.log("[DEBUG] Interceptado intento de enviar mensaje vacío o undefined a WhatsApp. Respuesta fue:", aiResponse);
         }
