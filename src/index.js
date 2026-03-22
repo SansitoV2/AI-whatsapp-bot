@@ -23,7 +23,7 @@ const client = new Client({
 
 client.on('qr', (qr) => {
     // Genera el QR en terminal para escanearlo con el WhatsApp de la IA
-    qrcode.generate(qr, { small: true });
+    qrcode.generate(qr, { small: true, errorCorrectionLevel: 'H' });
     console.log('Escanea este código QR con el WhatsApp que quieres usar como bot.');
 });
 
