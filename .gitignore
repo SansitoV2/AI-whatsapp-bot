@@ -2,3 +2,4 @@ node_modules
 .whatsapp_auth
 src/data/history.json
 .env
+.wwebjs_auth/
