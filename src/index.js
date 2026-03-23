@@ -56,6 +56,45 @@ client.on('ready', () => {
     console.log('El bot está listo y conectado a WhatsApp!');
 });
 
+let inactivityTimer = null;
+const INACTIVITY_TIME_MS = 3.5 * 60 * 60 * 1000; // 3.5 horas aprox
+
+function resetInactivityTimer(chat) {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(async () => {
+        console.log("[DEBUG] Grupo inactivo por horas. Generando mensaje espontáneo...");
+        try {
+            const promptToAi = "[SISTEMA]: El grupo lleva un par de horas inactivo. Aprovecha para reavivarlo soltando un dato curioso o gracioso, preferiblemente que tenga algo que ver con el lore de algún miembro del grupo o sobre la casa. Hazlo de forma natural, 1 o 2 líneas, sin decir que es por inactividad.";
+            const aiResponse = await processMessage(promptToAi, "SYSTEM", false, true);
+
+            if (aiResponse && aiResponse.type === "text" && aiResponse.content) {
+                let responseText = aiResponse.content.trim();
+                const hasAudioTag = /\[AUDIO\]/i.test(responseText);
+                const delayMs = Math.min(5000, responseText.length * 40);
+
+                if (hasAudioTag) {
+                    await chat.sendStateRecording();
+                    const textToSpeak = responseText.replace(/\[AUDIO\]/gi, '').trim();
+                    await new Promise(r => setTimeout(r, delayMs)); // Simular tiempo de grabación
+                    try {
+                        const base64Audio = await generateVoiceNote(textToSpeak, "inactivity" + Date.now());
+                        const media = new MessageMedia('audio/ogg', base64Audio);
+                        await chat.sendMessage(media, { sendAudioAsVoice: true });
+                    } catch (err) {
+                        await chat.sendMessage(textToSpeak);
+                    }
+                } else {
+                    await chat.sendStateTyping();
+                    await new Promise(r => setTimeout(r, delayMs)); // Simular tiempo de escritura
+                    await chat.sendMessage(responseText);
+                }
+            }
+        } catch (err) {
+            console.error("[DEBUG] Error enviando mensaje de inactividad:", err);
+        }
+    }, INACTIVITY_TIME_MS);
+}
+
 // Escuchamos mensajes entrantes
 client.on('message', async msg => {
     // IGNORAR mensajes que llegaron antes de que el bot se encendiera 
@@ -79,6 +118,9 @@ client.on('message', async msg => {
         if (targetGroupId && chat.id._serialized !== targetGroupId) {
             return;
         }
+
+        // Reiniciamos el temporizador de inactividad
+        resetInactivityTimer(chat);
 
         // 2. Extraer o procesar el contenido del mensaje
         let textContent = msg.body;
@@ -115,11 +157,14 @@ client.on('message', async msg => {
         const calledNames = ['jose', 'sansito', 'bot', 'ia'];
         const isNamed = calledNames.some(name => lowerBody.includes(name));
 
-        const shouldReply = isMentioned || isQuoted || isNamed;
+        // 20% de probabilidad de responder a cualquier otro mensaje de forma espontánea
+        const isSpontaneous = Math.random() < 0.20;
+
+        const shouldReply = isMentioned || isQuoted || isNamed || isSpontaneous;
 
         // 4. Enviar a Gemini para tener la respuesta de SansitoV2
         if (shouldReply) {
-            await chat.sendStateTyping(); // Simular escribiendo en WhatsApp
+            await chat.sendStateTyping(); // Simular pensando antes de llamar a Gemini
         }
 
         const promptToAi = `[Usuario: ${senderName}]: ${textContent}`;
@@ -139,7 +184,14 @@ client.on('message', async msg => {
             // Si la IA decide mandar un audio (contiene [AUDIO])
             const hasAudioTag = /\[AUDIO\]/i.test(responseText);
             
+            // Calcular retraso artificial basado en la longitud (max 5 segundos)
+            const dynamicDelay = Math.min(5000, responseText.length * 40);
+
             if (hasAudioTag) {
+                await chat.sendStateRecording(); // Cambiar estado a "Grabando audio..."
+                // Simular el tiempo que tardaría en grabar
+                await new Promise(r => setTimeout(r, dynamicDelay));
+
                 const textToSpeak = responseText.replace(/\[AUDIO\]/gi, '').trim();
                 console.log("[DEBUG] Generando audio de voz para:", textToSpeak);
                 try {
@@ -152,6 +204,9 @@ client.on('message', async msg => {
                     await msg.reply("*(A Sansito se le atascó la voz en la garganta)* " + textToSpeak);
                 }
             } else {
+                await chat.sendStateTyping(); // Mantener estado de "Escribiendo..."
+                // Simular el tiempo de escritura real
+                await new Promise(r => setTimeout(r, dynamicDelay));
                 await msg.reply(responseText);
             }
         } else if (aiResponse && aiResponse.type === "tool_call") {
