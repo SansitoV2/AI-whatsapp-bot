@@ -163,8 +163,8 @@ client.on('message', async msg => {
         const calledNames = ['jose'];
         const isNamed = calledNames.some(name => lowerBody.includes(name));
 
-        // 20% de probabilidad de responder a cualquier otro mensaje de forma espontánea
-        const isSpontaneous = Math.random() < 0.20;
+        // 10% de probabilidad de responder a cualquier otro mensaje de forma espontánea
+        const isSpontaneous = Math.random() < 0.10;
 
         const shouldReply = isMentioned || isQuoted || isNamed || isSpontaneous;
 
