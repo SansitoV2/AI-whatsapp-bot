@@ -95,6 +95,9 @@ function resetInactivityTimer(chat) {
     }, INACTIVITY_TIME_MS);
 }
 
+// Cola de procesamiento para que el bot responda calmado 1 por 1
+let messageQueue = Promise.resolve();
+
 // Escuchamos mensajes entrantes
 client.on('message', async msg => {
     // IGNORAR mensajes que llegaron antes de que el bot se encendiera 
@@ -109,8 +112,10 @@ client.on('message', async msg => {
         return; 
     }
 
-    try {
-        const chat = await msg.getChat();
+    // Encadenamos cada mensaje en la cola para que se procesen y contesten 1 a 1 de forma calmada
+    messageQueue = messageQueue.then(async () => {
+        try {
+            const chat = await msg.getChat();
 
         // 1. Verificar si estamos en un grupo específico o es conversación privada
         // Si configuras el GROUP_CHAT_ID en .env, solo funcionará ahí
@@ -154,7 +159,8 @@ client.on('message', async msg => {
         const isMentioned = mentionedIds.includes(client.info.wid._serialized);
         
         const lowerBody = textContent.toLowerCase();
-        const calledNames = ['jose', 'sansito', 'bot', 'ia'];
+        // Solo contestar si le dicen Jose
+        const calledNames = ['jose'];
         const isNamed = calledNames.some(name => lowerBody.includes(name));
 
         // 20% de probabilidad de responder a cualquier otro mensaje de forma espontánea
@@ -219,6 +225,9 @@ client.on('message', async msg => {
     } catch (error) {
         console.error('Error al procesar mensaje:', error);
     }
+    // Si la IA procesó algo que generó respuesta, le damos un respiro extra de 2 segundos antes de mirar el siguiente mensaje
+    await new Promise(r => setTimeout(r, 2000));
+    }).catch(err => console.error("Error crítico en la cola de mensajes:", err));
 });
 
 // Iniciamos cliente
