@@ -97,22 +97,53 @@ client.on('message', async msg => {
         // 3. Obtener el nombre de quién lo manda
         const contact = await msg.getContact();
         const senderName = contact.pushname || contact.name || contact.number;
+        const senderId = contact.id._serialized;
+
+        // Comprobar si nos citan, si nos mencionan o si dicen nuestro nombre
+        let isQuoted = false;
+        if (msg.hasQuotedMsg) {
+            const quotedMsg = await msg.getQuotedMessage();
+            if (quotedMsg && quotedMsg.fromMe) {
+                isQuoted = true;
+            }
+        }
+
+        const mentionedIds = msg.mentionedIds || [];
+        const isMentioned = mentionedIds.includes(client.info.wid._serialized);
+        
+        const lowerBody = textContent.toLowerCase();
+        const calledNames = ['jose', 'sansito', 'bot', 'ia'];
+        const isNamed = calledNames.some(name => lowerBody.includes(name));
+
+        const shouldReply = isMentioned || isQuoted || isNamed;
 
         // 4. Enviar a Gemini para tener la respuesta de SansitoV2
-        await chat.sendStateTyping(); // Simular escribiendo en WhatsApp
+        if (shouldReply) {
+            await chat.sendStateTyping(); // Simular escribiendo en WhatsApp
+        }
+
         const promptToAi = `[Usuario: ${senderName}]: ${textContent}`;
-        const aiResponse = await processMessage(promptToAi);
+        // Pasamos senderId y un false a isAudio temporalmente si no lo extrajimos arriba, y por ultimo shouldReply
+        // Pero en tu versión original solo pasabas processMessage(promptToAi). 
+        // Vamos a reajustar para pasar (textContent, senderId, msg.hasMedia, shouldReply)
+        const isAudio = msg.hasMedia && (msg.type === 'audio' || msg.type === 'ptt');
+        const aiResponse = await processMessage(textContent, senderId, isAudio, shouldReply);
+
+        // Si no debía responder, aiResponse será null y acaba aquí en silencio
+        if (!shouldReply || !aiResponse) return;
 
         // 5. Enviar mensaje de vuelta
-        if (aiResponse && aiResponse.type === "text" && aiResponse.content && aiResponse.content.trim().length > 0) {
+        if (aiResponse.type === "text" && aiResponse.content && aiResponse.content.trim().length > 0) {
             let responseText = aiResponse.content.trim();
             
-            // Si la IA decide mandar un audio (empieza por [AUDIO])
-            if (responseText.startsWith('[AUDIO]') || responseText.startsWith('[Audio]')) {
-                const textToSpeak = responseText.replace(/\[AUDIO\]|\[Audio\]/i, '').trim();
+            // Si la IA decide mandar un audio (contiene [AUDIO])
+            const hasAudioTag = /\[AUDIO\]/i.test(responseText);
+            
+            if (hasAudioTag) {
+                const textToSpeak = responseText.replace(/\[AUDIO\]/gi, '').trim();
                 console.log("[DEBUG] Generando audio de voz para:", textToSpeak);
                 try {
-                    const base64Audio = await generateVoiceNote(textToSpeak);
+                    const base64Audio = await generateVoiceNote(textToSpeak, msg.id.id);
                     const media = new MessageMedia('audio/ogg', base64Audio);
                     await msg.reply(media, undefined, { sendAudioAsVoice: true });
                     return; // Terminamos aquí para no enviar también el texto

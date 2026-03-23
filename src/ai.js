@@ -75,12 +75,13 @@ const model = genAI.getGenerativeModel({
   ]
 });
 
-async function processMessage(messageText, senderId, isAudio = false) {
+async function processMessage(messageText, senderId, isAudio = false, shouldReply = true) {
   const senderInfo = membersData[senderId];
   const senderName = senderInfo ? senderInfo.name : "Alguien (desconocido)";
   
   const content = isAudio ? `[Audio transcribido] ${messageText}` : messageText;
   
+  // Añadimos el mensaje al historial
   conversationHistory.push({
     role: "user",
     content: `${senderName} dice: ${content}`
@@ -91,6 +92,11 @@ async function processMessage(messageText, senderId, isAudio = false) {
   }
   
   saveHistory();
+
+  // Si no nos han hablado a nosotros, solo guardamos para el cotilleo y no llamamos a Gemini
+  if (!shouldReply) {
+    return null;
+  }
 
   // Limpiamos el historial para Gemini 
   let historyForGemini = [];
