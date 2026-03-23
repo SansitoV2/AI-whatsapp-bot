@@ -116,7 +116,8 @@ client.on('message', async msg => {
                 await msg.reply(responseText);
             }
         } else if (aiResponse && aiResponse.type === "tool_call") {
-            await msg.reply("He guardado el acontecimiento en mi base de datos interna. ¡Oído, mi rey!");
+            // Se ha ejecutado una herramienta (ej. guardar en memoria), lo registramos en consola pero NO respondemos en WhatsApp
+            console.log(`[BOT] Operación en segundo plano realizada por la IA (tool_call): Memoria/Historial actualizado para el usuario: ${senderName}`);
         } else {
             console.log("[DEBUG] Interceptado intento de enviar mensaje vacío o undefined a WhatsApp. Respuesta fue:", aiResponse);
         }
