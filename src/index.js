@@ -78,6 +78,11 @@ client.on('message', async msg => {
     messageQueue = messageQueue.then(async () => {
         try {
             const chat = await msg.getChat();
+            
+            // Imprimir la ID del grupo para poder guardarla en el .env
+            if (chat.isGroup) {
+                console.log(`[INFO DEL GRUPO] Nombre: "${chat.name}" | ID: ${chat.id._serialized}`);
+            }
 
         // 1. Verificar si estamos en un grupo específico o es conversación privada
         // Si configuras el GROUP_CHAT_ID en .env, solo funcionará ahí
@@ -114,8 +119,8 @@ client.on('message', async msg => {
             }
         }
 
-        const mentionedIds = msg.mentionedIds || [];
-        const isMentioned = mentionedIds.includes(client.info.wid._serialized);
+        const mentions = await msg.getMentions();
+        const isMentioned = mentions.some(contact => contact.isMe);
         
         // Solo contesta si ha sido mencionado (@) o si se responde (cita) a uno de sus mensajes
         const shouldReply = isMentioned || isQuoted;
@@ -184,3 +189,20 @@ client.on('message', async msg => {
 
 // Iniciamos cliente
 client.initialize();
+
+// Auto-reinicio si Chrome/Puppeteer se crashea
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    if (String(reason).includes('Protocol error') || String(reason).includes('Execution context was destroyed')) {
+        console.log("[FATAL] NodeJS/Puppeteer crash detectado. Reiniciando bot automáticamente...");
+        process.exit(1);
+    }
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    if (String(err).includes('Protocol error') || String(err).includes('Execution context was destroyed')) {
+        console.log("[FATAL] NodeJS/Puppeteer crash detectado. Reiniciando bot automáticamente...");
+        process.exit(1);
+    }
+});
