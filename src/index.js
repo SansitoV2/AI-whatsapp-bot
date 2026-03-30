@@ -56,44 +56,6 @@ client.on('ready', () => {
     console.log('El bot está listo y conectado a WhatsApp!');
 });
 
-let inactivityTimer = null;
-const INACTIVITY_TIME_MS = 3.5 * 60 * 60 * 1000; // 3.5 horas aprox
-
-function resetInactivityTimer(chat) {
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-    inactivityTimer = setTimeout(async () => {
-        console.log("[DEBUG] Grupo inactivo por horas. Generando mensaje espontáneo...");
-        try {
-            const promptToAi = "[SISTEMA]: El grupo lleva un par de horas inactivo. Aprovecha para reavivarlo soltando un dato curioso o gracioso, preferiblemente que tenga algo que ver con el lore de algún miembro del grupo o sobre la casa. Hazlo de forma natural, 1 o 2 líneas, sin decir que es por inactividad.";
-            const aiResponse = await processMessage(promptToAi, "SYSTEM", false, true);
-
-            if (aiResponse && aiResponse.type === "text" && aiResponse.content) {
-                let responseText = aiResponse.content.trim();
-                const hasAudioTag = /\[AUDIO\]/i.test(responseText);
-                const delayMs = Math.min(5000, responseText.length * 40);
-
-                if (hasAudioTag) {
-                    await chat.sendStateRecording();
-                    const textToSpeak = responseText.replace(/\[AUDIO\]/gi, '').trim();
-                    await new Promise(r => setTimeout(r, delayMs)); // Simular tiempo de grabación
-                    try {
-                        const base64Audio = await generateVoiceNote(textToSpeak, "inactivity" + Date.now());
-                        const media = new MessageMedia('audio/ogg', base64Audio);
-                        await chat.sendMessage(media, { sendAudioAsVoice: true });
-                    } catch (err) {
-                        await chat.sendMessage(textToSpeak);
-                    }
-                } else {
-                    await chat.sendStateTyping();
-                    await new Promise(r => setTimeout(r, delayMs)); // Simular tiempo de escritura
-                    await chat.sendMessage(responseText);
-                }
-            }
-        } catch (err) {
-            console.error("[DEBUG] Error enviando mensaje de inactividad:", err);
-        }
-    }, INACTIVITY_TIME_MS);
-}
 
 // Cola de procesamiento para que el bot responda calmado 1 por 1
 let messageQueue = Promise.resolve();
@@ -124,17 +86,14 @@ client.on('message', async msg => {
             return;
         }
 
-        // Reiniciamos el temporizador de inactividad
-        resetInactivityTimer(chat);
-
         // 2. Extraer o procesar el contenido del mensaje
         let textContent = msg.body;
         
         // Si es un audio, podemos transcribirlo
         if (msg.hasMedia && (msg.type === 'audio' || msg.type === 'ptt')) {
             const media = await msg.downloadMedia();
-            // Lógica de transcripción (simulada)
-            textContent = await transcribeAudioMsg(media);
+            // Le pasamos el base64 de media.data y el id del mensaje
+            textContent = await transcribeAudioMsg(media.data, msg.id.id);
             console.log(`[Audio recibido transcrito]: ${textContent}`);
         }
 
@@ -158,15 +117,8 @@ client.on('message', async msg => {
         const mentionedIds = msg.mentionedIds || [];
         const isMentioned = mentionedIds.includes(client.info.wid._serialized);
         
-        const lowerBody = textContent.toLowerCase();
-        // Solo contestar si le dicen Jose
-        const calledNames = ['jose'];
-        const isNamed = calledNames.some(name => lowerBody.includes(name));
-
-        // 10% de probabilidad de responder a cualquier otro mensaje de forma espontánea
-        const isSpontaneous = Math.random() < 0.10;
-
-        const shouldReply = isMentioned || isQuoted || isNamed || isSpontaneous;
+        // Solo contesta si ha sido mencionado (@) o si se responde (cita) a uno de sus mensajes
+        const shouldReply = isMentioned || isQuoted;
 
         // 4. Enviar a Gemini para tener la respuesta de SansitoV2
         if (shouldReply) {
